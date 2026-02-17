@@ -349,6 +349,42 @@ class AtlassianClient:
             f"{self.config.base_url}/wiki/rest/api/content", payload
         )
 
+    async def attach_file_to_page(
+        self,
+        page_id: str,
+        file_path: str,
+        *,
+        content_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Upload a file attachment to a Confluence page."""
+        import mimetypes
+        from pathlib import Path
+
+        await self._ensure_client()
+
+        fp = Path(file_path)
+        if not fp.is_file():
+            raise FileNotFoundError(f"Attachment file not found: {file_path}")
+
+        mime = content_type or mimetypes.guess_type(fp.name)[0] or "application/octet-stream"
+
+        # Multipart upload needs its own client without the default
+        # Content-Type: application/json header (which blocks multipart).
+        async with httpx.AsyncClient(
+            auth=self.config.auth,
+            timeout=httpx.Timeout(self.config.timeout),
+        ) as upload_client:
+            resp = await upload_client.post(
+                f"{self.config.base_url}/wiki/rest/api/content/{page_id}/child/attachment",
+                files={"file": (fp.name, fp.read_bytes(), mime)},
+                headers={
+                    "X-Atlassian-Token": "nocheck",
+                    "Accept": "application/json",
+                },
+            )
+        resp.raise_for_status()
+        return resp.json()
+
 
 # ---------------------------------------------------------------------------
 # Singleton accessor

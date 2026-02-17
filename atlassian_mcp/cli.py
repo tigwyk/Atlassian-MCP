@@ -262,6 +262,22 @@ async def cmd_confluence_comment(page_id: str, comment: str) -> None:
     await atl.close()
 
 
+async def cmd_confluence_attach(page_id: str, file_path: str) -> None:
+    atl = get_atlassian_client()
+    await atl.initialize()
+    data = await atl.attach_file_to_page(page_id, file_path)
+    results = data.get("results", [data] if "id" in data else [])
+    attachments = []
+    for att in results:
+        attachments.append({
+            "id": att.get("id"),
+            "title": att.get("title"),
+            "download": f"{atl.config.base_url}/wiki{att.get('_links', {}).get('download', '')}",
+        })
+    _print_json({"page_id": page_id, "attachments": attachments})
+    await atl.close()
+
+
 # ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
@@ -338,6 +354,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--comment-file", default=None,
                    help="Read comment from file (use '-' for stdin)")
 
+    # confluence-attach
+    p = sub.add_parser("confluence-attach", help="Upload a file attachment to a Confluence page")
+    p.add_argument("page_id", help="Numeric page ID")
+    p.add_argument("file", help="Path to the file to attach")
+
     return parser
 
 
@@ -397,6 +418,8 @@ def main() -> None:
                 if not comment:
                     parser.error("confluence-comment requires comment text or --comment-file")
                 asyncio.run(cmd_confluence_comment(args.page_id, comment))
+            case "confluence-attach":
+                asyncio.run(cmd_confluence_attach(args.page_id, args.file))
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
